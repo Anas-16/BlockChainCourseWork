@@ -3,10 +3,10 @@ import { PeraWalletConnect } from "@perawallet/connect";
 
 const config = {
     algodToken: "",
-    algodServer: "https://node.testnet.algoexplorerapi.io",
+    algodServer: "https://testnet-api.algonode.cloud",
     algodPort: "",
     indexerToken: "",
-    indexerServer: "https://algoindexer.testnet.algoexplorerapi.io",
+    indexerServer: "https://testnet-idx.algonode.cloud",
     indexerPort: "",
 }
 
@@ -30,6 +30,7 @@ export const numLocalInts = 0;
 export const numLocalBytes = 0;
 // Maximum global storage allocation, immutable
 export const numGlobalInts = 3;
-export const numGlobalBytes = 3;
+// Increase global bytes from 4 to 5 to accommodate both OWNER and BUYER
+export const numGlobalBytes = 5;
 
 export const ALGORAND_DECIMALS = 6;

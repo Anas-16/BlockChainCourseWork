@@ -1,27 +1,82 @@
-import React, { useCallback, useState } from "react";
+import React, { useState } from "react";
 import PropTypes from "prop-types";
-import { Button, FloatingLabel, Form, Modal } from "react-bootstrap";
-import { stringToMicroAlgos } from "../../utils/conversions";
+import { Button, Modal, Form, FloatingLabel } from "react-bootstrap";
+import { createPropertyAction } from "../../utils/propertycontract";
+import { toast } from "react-toastify";
 
 const AddProperty = ({ createProperty }) => {
   const [title, setTitle] = useState("");
   const [image, setImage] = useState("");
   const [location, setLocation] = useState("");
   const [price, setPrice] = useState(0);
-
-  const isFormFilled = useCallback(() => {
-    return title && image && location && price > 0;
-  }, [title, image, location, price]);
-
   const [show, setShow] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleClose = () => setShow(false);
-  const handleShow = () => setShow(true);
+  // Function to handle property creation
+  const handleCreateProperty = async () => {
+    try {
+      setLoading(true);
+      setErrorMessage("");
+      
+      // Validate inputs
+      if (!title || !image || !location || !price) {
+        setErrorMessage("All fields are required");
+        setLoading(false);
+        return;
+      }
+      
+      if (price <= 0) {
+        setErrorMessage("Price must be greater than 0");
+        setLoading(false);
+        return;
+      }
+      
+      // Log the data being sent
+      console.log("Creating property with data:", {
+        title,
+        image,
+        location,
+        price: Number(price) * 1000000 // Convert to microAlgos
+      });
+      
+      // Create property
+      const property = {
+        title,
+        image,
+        location,
+        price: Number(price) * 1000000, // Convert to microAlgos
+      };
+      
+      // Close modal before async operation to prevent state updates after unmounting
+      handleClose();
+      
+      await createProperty(property);
+    } catch (error) {
+      console.error("Error creating property:", error);
+      // Only set state if component is still mounted
+      if (show) {
+        setErrorMessage(`Error: ${error.message || "Failed to create property"}`);
+        toast.error(`Error: ${error.message || "Failed to create property"}`);
+        setLoading(false);
+      }
+    }
+  };
+
+  // Handle modal close
+  const handleClose = () => {
+    setShow(false);
+    setTitle("");
+    setImage("");
+    setLocation("");
+    setPrice(0);
+    setErrorMessage("");
+  };
 
   return (
     <>
       <Button
-        onClick={handleShow}
+        onClick={() => setShow(true)}
         variant="dark"
         className="rounded-pill px-0"
         style={{ width: "38px" }}
@@ -32,30 +87,29 @@ const AddProperty = ({ createProperty }) => {
         <Modal.Header closeButton>
           <Modal.Title>New Property</Modal.Title>
         </Modal.Header>
-        <Form>
-          <Modal.Body>
+        <Modal.Body>
+          <Form>
             <FloatingLabel
-              controlId="inputName"
+              controlId="inputTitle"
               label="Property title"
               className="mb-3"
             >
               <Form.Control
                 type="text"
+                placeholder="Property title"
                 onChange={(e) => {
                   setTitle(e.target.value);
                 }}
-                placeholder="Enter property title"
               />
             </FloatingLabel>
             <FloatingLabel
-              controlId="inputUrl"
+              controlId="inputImage"
               label="Image URL"
               className="mb-3"
             >
               <Form.Control
                 type="text"
                 placeholder="Image URL"
-                value={image}
                 onChange={(e) => {
                   setImage(e.target.value);
                 }}
@@ -80,33 +134,28 @@ const AddProperty = ({ createProperty }) => {
               className="mb-3"
             >
               <Form.Control
-                type="text"
-                placeholder="Price"
+                type="number"
+                placeholder="Price in ALGO"
                 onChange={(e) => {
-                  setPrice(stringToMicroAlgos(e.target.value));
+                  setPrice(e.target.value);
                 }}
               />
             </FloatingLabel>
-          </Modal.Body>
-        </Form>
+            {errorMessage && (
+              <div className="alert alert-danger mt-2">{errorMessage}</div>
+            )}
+          </Form>
+        </Modal.Body>
         <Modal.Footer>
           <Button variant="outline-secondary" onClick={handleClose}>
             Close
           </Button>
           <Button
             variant="dark"
-            disabled={!isFormFilled()}
-            onClick={() => {
-              createProperty({
-                title,
-                image,
-                location,
-                price,
-              });
-              handleClose();
-            }}
+            disabled={!title || !image || !location || !price || loading}
+            onClick={handleCreateProperty}
           >
-            Save propery
+            {loading ? "Creating..." : "Create Property"}
           </Button>
         </Modal.Footer>
       </Modal>

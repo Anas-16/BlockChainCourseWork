@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { toast } from "react-toastify";
 import AddProperty from "./AddProperty";
 import Property from "./Property";
 import Loader from "../utils/Loader";
-import { NotificationError, NotificationSuccess } from "../utils/Notifications";
 import PropTypes from "prop-types";
 import { Row } from "react-bootstrap";
 import {
@@ -12,96 +11,141 @@ import {
   deletePropertyAction,
   buyPropertyAction,
   ratePropertyAction,
+  getApplication,
 } from "../../utils/propertycontract";
 
 const Properties = ({ address, fetchBalance }) => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const getProperties = async () => {
-    setLoading(true);
-    toast(<NotificationSuccess text="Fetching properties" />);
-    getPropertiesAction()
-      .then((products) => {
-        if (products) {
-          setProperties(products);
+  const getProperties = useCallback(async () => {
+    try {
+      setLoading(true);
+      try {
+        const properties = await getPropertiesAction();
+        if (properties && properties.length > 0) {
+          setProperties(properties);
+        } else {
+          console.log("No properties found from indexer, keeping existing properties");
         }
-      })
-      .catch((error) => {
-        console.log(error);
-      })
-      .finally((_) => {
+      } catch (error) {
+        console.error("Error fetching properties from indexer:", error);
+        // Don't clear existing properties if the indexer fails
+        toast.error(`Indexer error: ${error.message || error}`);
+      } finally {
         setLoading(false);
-      });
+      }
+    } catch (error) {
+      console.error("Error in getProperties:", error);
+      setLoading(false);
+    }
+  }, []);
+
+  const createProperty = async (data) => {
+    try {
+      setLoading(true);
+      console.log("Creating property with address:", address);
+      console.log("Property data:", data);
+      
+      // Validate the data
+      if (!data.title || !data.image || !data.location || !data.price) {
+        throw new Error("All fields are required");
+      }
+      
+      // Create the property
+      const appId = await createPropertyAction(address, data);
+      console.log("Property created with appId:", appId);
+      
+      // Show success notification
+      toast.success("Property created successfully!");
+      
+      // Update balance
+      await fetchBalance(address);
+      
+      // Add the new property directly to the state
+      try {
+        const newProperty = await getApplication(appId);
+        if (newProperty) {
+          setProperties(prevProperties => [...prevProperties, newProperty]);
+          console.log("Added new property to UI:", newProperty.title);
+        }
+      } catch (error) {
+        console.error("Error adding new property to UI:", error);
+      }
+      
+      // Also try to refresh all properties
+      setTimeout(async () => {
+        try {
+          await getProperties();
+        } catch (error) {
+          console.error("Error refreshing properties:", error);
+        } finally {
+          setLoading(false);
+        }
+      }, 2000);
+      
+      return appId;
+    } catch (error) {
+      console.error("Error creating property:", error);
+      const errorMessage = error.message || "Failed to create a property.";
+      console.log("Error details:", error);
+      toast.error(errorMessage);
+      setLoading(false);
+      throw error; // Re-throw to handle in the AddProperty component
+    }
+  };
+
+  const buyProperty = async (property) => {
+    try {
+      setLoading(true);
+      await buyPropertyAction(address, property);
+      await getProperties();
+      await fetchBalance(address);
+      toast.success("Property bought successfully");
+    } catch (error) {
+      console.error("Error buying property:", error);
+      toast.error(`Error buying property: ${error.message || error}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteProperty = async (property) => {
+    try {
+      setLoading(true);
+      await deletePropertyAction(address, property.appId);
+      await getProperties();
+      toast.success("Property deleted successfully");
+    } catch (error) {
+      console.error("Error deleting property:", error);
+      toast.error(`Error deleting property: ${error.message || error}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const rateProperty = async (property, rate) => {
+    try {
+      setLoading(true);
+      await ratePropertyAction(address, property, rate);
+      await getProperties();
+      toast.success("Property rated successfully");
+    } catch (error) {
+      console.error("Error rating property:", error);
+      toast.error(`Error rating property: ${error.message || error}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     getProperties();
-  }, []);
-
-  const createProperty = async (data) => {
-    setLoading(true);
-    createPropertyAction(address, data)
-      .then(() => {
-        toast(<NotificationSuccess text="Propery added successfully." />);
-        getProperties();
-        fetchBalance(address);
-      })
-      .catch((error) => {
-        console.log(error);
-        toast(<NotificationError text="Failed to create a product." />);
-        setLoading(false);
-      });
-  };
-
-  const buyProperty = async (property) => {
-    setLoading(true);
-    buyPropertyAction(address, property)
-      .then(() => {
-        toast(<NotificationSuccess text="Property bought successfully" />);
-        getProperties();
-        fetchBalance(address);
-      })
-      .catch((error) => {
-        console.log(error);
-        toast(<NotificationError text="Failed to purchase property." />);
-        setLoading(false);
-      });
-  };
-
-  const rateProperty = async (property, rate) => {
-    setLoading(true);
-    ratePropertyAction(address, property, rate)
-      .then(() => {
-        toast(<NotificationSuccess text="Property rated successfully" />);
-        getProperties();
-        fetchBalance(address);
-      })
-      .catch((error) => {
-        console.log(error);
-        toast(<NotificationError text="Failed to rate property." />);
-        setLoading(false);
-      });
-  };
-
-  const deleteProperty = async (property) => {
-    setLoading(true);
-    deletePropertyAction(address, property.appId)
-      .then(() => {
-        toast(<NotificationSuccess text="Property deleted successfully" />);
-        getProperties();
-        fetchBalance(address);
-      })
-      .catch((error) => {
-        console.log(error);
-        toast(<NotificationError text="Failed to delete property." />);
-        setLoading(false);
-      });
-  };
+  }, [getProperties]);
 
   if (loading) {
     return <Loader />;
   }
+
   return (
     <>
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -109,18 +153,16 @@ const Properties = ({ address, fetchBalance }) => {
         <AddProperty createProperty={createProperty} />
       </div>
       <Row xs={1} sm={2} lg={3} className="g-3 mb-5 g-xl-4 g-xxl-5">
-        <>
-          {properties.map((data, index) => (
-            <Property
-              address={address}
-              property={data}
-              buyProperty={buyProperty}
-              deleteProperty={deleteProperty}
-              rateProperty={rateProperty}
-              key={index}
-            />
-          ))}
-        </>
+        {properties.map((_property) => (
+          <Property
+            address={address}
+            property={_property}
+            buyProperty={buyProperty}
+            deleteProperty={deleteProperty}
+            rateProperty={rateProperty}
+            key={_property.appId}
+          />
+        ))}
       </Row>
     </>
   );

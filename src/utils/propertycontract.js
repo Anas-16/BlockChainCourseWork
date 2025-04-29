@@ -50,65 +50,117 @@ const compileProgram = async (programSource) => {
 // CREATE PRODUCT: ApplicationCreateTxn
 export const createPropertyAction = async (senderAddress, property) => {
   console.log("Adding property...");
+  console.log("Sender address:", senderAddress);
+  console.log("Property data:", property);
 
-  let params = await algodClient.getTransactionParams().do();
+  try {
+    let params = await algodClient.getTransactionParams().do();
+    console.log("Transaction params:", params);
 
-  // Compile programs
-  const compiledApprovalProgram = await compileProgram(approvalProgram);
-  const compiledClearProgram = await compileProgram(clearProgram);
+    // Compile programs
+    console.log("Compiling approval program...");
+    const compiledApprovalProgram = await compileProgram(approvalProgram);
+    console.log("Compiling clear program...");
+    const compiledClearProgram = await compileProgram(clearProgram);
+    console.log("Programs compiled successfully");
 
-  // Build note to identify transaction later and required app args as Uint8Arrays
-  let note = new TextEncoder().encode(propertyDappNote);
-  let title = new TextEncoder().encode(property.title);
-  let image = new TextEncoder().encode(property.image);
-  let location = new TextEncoder().encode(property.location);
-  let price = algosdk.encodeUint64(property.price);
-  let owner = new TextEncoder().encode(senderAddress);
+    // Build note to identify transaction later and required app args as Uint8Arrays
+    let note = new TextEncoder().encode(propertyDappNote);
+    let title = new TextEncoder().encode(property.title);
+    let image = new TextEncoder().encode(property.image);
+    let location = new TextEncoder().encode(property.location);
+    
+    // Fix for uint64 encoding issue - without using BigInt
+    let priceUint8Array;
+    try {
+      // Try the standard method first
+      priceUint8Array = algosdk.encodeUint64(property.price);
+    } catch (error) {
+      console.log("Standard uint64 encoding failed, using alternative method");
+      // Alternative method without BigInt
+      const buffer = new ArrayBuffer(8);
+      const view = new DataView(buffer);
+      
+      // Ensure price is a number and within safe range
+      const priceNumber = Number(property.price);
+      if (isNaN(priceNumber) || priceNumber < 0) {
+        throw new Error("Price must be a positive number");
+      }
+      
+      // Manual encoding of 64-bit integer (big-endian)
+      // This handles the high 32 bits and low 32 bits separately
+      const high = Math.floor(priceNumber / 4294967296); // 2^32
+      const low = priceNumber % 4294967296;
+      
+      view.setUint32(0, high, false); // high 32 bits
+      view.setUint32(4, low, false);  // low 32 bits
+      priceUint8Array = new Uint8Array(buffer);
+    }
+    
+    // Use a shorter representation of the owner address to save space
+    let owner = new TextEncoder().encode(senderAddress);
 
-  let appArgs = [title, image, location, owner, price];
+    let appArgs = [title, image, location, owner, priceUint8Array];
+    console.log("App args prepared:", {
+      title: property.title,
+      image: property.image,
+      location: property.location,
+      price: property.price,
+      owner: senderAddress
+    });
 
-  // Create ApplicationCreateTxn
-  let txn = algosdk.makeApplicationCreateTxnFromObject({
-    from: senderAddress,
-    suggestedParams: params,
-    onComplete: algosdk.OnApplicationComplete.NoOpOC,
-    approvalProgram: compiledApprovalProgram,
-    clearProgram: compiledClearProgram,
-    numLocalInts: numLocalInts,
-    numLocalByteSlices: numLocalBytes,
-    numGlobalInts: numGlobalInts,
-    numGlobalByteSlices: numGlobalBytes,
-    note: note,
-    appArgs: appArgs,
-  });
+    // Create ApplicationCreateTxn
+    console.log("Creating application transaction...");
+    let txn = algosdk.makeApplicationCreateTxnFromObject({
+      from: senderAddress,
+      suggestedParams: params,
+      onComplete: algosdk.OnApplicationComplete.NoOpOC,
+      approvalProgram: compiledApprovalProgram,
+      clearProgram: compiledClearProgram,
+      numLocalInts: numLocalInts,
+      numLocalByteSlices: numLocalBytes,
+      numGlobalInts: numGlobalInts,
+      numGlobalByteSlices: numGlobalBytes,
+      note: note,
+      appArgs: appArgs,
+    });
 
-  // Get transaction ID
-  let txId = txn.txID().toString();
+    // Get transaction ID
+    let txId = txn.txID().toString();
+    console.log("Transaction created with ID:", txId);
 
-  // Sign & submit the transaction using Pera Wallet instead of MyAlgo
-  const singleTxnGroups = [{ txn }];
-  const signedTxn = await peraWallet.signTransaction([singleTxnGroups]);
-  console.log("Signed transaction with txID: %s", txId);
-  await algodClient.sendRawTransaction(signedTxn).do();
-
-  // Wait for transaction to be confirmed
-  let confirmedTxn = await algosdk.waitForConfirmation(algodClient, txId, 4);
-
-  // Get the completed Transaction
-  console.log(
-    "Transaction " +
-      txId +
-      " confirmed in round " +
-      confirmedTxn["confirmed-round"]
-  );
-
-  // Get created application id and notify about completion
-  let transactionResponse = await algodClient
-    .pendingTransactionInformation(txId)
-    .do();
-  let appId = transactionResponse["application-index"];
-  console.log("Created new app-id: ", appId);
-  return appId;
+    // Sign & submit the transaction
+    console.log("Signing transaction with Pera wallet...");
+    const singleTxnGroups = [{ txn }];
+    try {
+      const signedTxn = await peraWallet.signTransaction([singleTxnGroups]);
+      console.log("Transaction signed successfully");
+      
+      console.log("Sending transaction to network...");
+      await algodClient.sendRawTransaction(signedTxn).do();
+      console.log("Transaction sent successfully");
+      
+      // Wait for transaction to be confirmed
+      console.log("Waiting for transaction confirmation...");
+      let confirmedTxn = await algosdk.waitForConfirmation(algodClient, txId, 4);
+      console.log("Transaction confirmed in round:", confirmedTxn["confirmed-round"]);
+      
+      // Get created application id and notify about completion
+      console.log("Getting transaction information...");
+      let transactionResponse = await algodClient
+        .pendingTransactionInformation(txId)
+        .do();
+      let appId = transactionResponse["application-index"];
+      console.log("Created new app-id:", appId);
+      return appId;
+    } catch (error) {
+      console.error("Error in transaction signing or submission:", error);
+      throw new Error(`Transaction failed: ${error.message || "Unknown error during transaction"}`);
+    }
+  } catch (error) {
+    console.error("Error in createPropertyAction:", error);
+    throw new Error(`Failed to create property: ${error.message || "Unknown error"}`);
+  }
 };
 
 // BUY PRODUCT: Group transaction consisting of ApplicationCallTxn and PaymentTxn
@@ -257,32 +309,62 @@ export const deletePropertyAction = async (senderAddress, index) => {
 // GET PROPERTIES: Use indexer
 export const getPropertiesAction = async () => {
   console.log("Fetching properties...");
-  let note = new TextEncoder().encode(propertyDappNote);
-  let encodedNote = Buffer.from(note).toString("base64");
+  
+  try {
+    // Get applications created with property note
+    let note = new TextEncoder().encode(propertyDappNote);
+    let encodedNote = Buffer.from(note).toString("base64");
 
-  // Step 1: Get all transactions by notePrefix (+ minRound filter for performance)
-  let transactionInfo = await indexerClient
-    .searchForTransactions()
-    .notePrefix(encodedNote)
-    .txType("appl")
-    .minRound(minRound)
-    .do();
-  let properties = [];
-  for (const transaction of transactionInfo.transactions) {
-    let appId = transaction["created-application-index"];
-    if (appId) {
-      // Step 2: Get each application by application id
-      let property = await getApplication(appId);
-      if (property) {
-        properties.push(property);
+    // Use a more targeted approach with limits to avoid timeouts
+    let properties = [];
+    
+    try {
+      console.log("Searching for property transactions with limits...");
+      // Add a limit parameter to avoid timeout
+      const response = await indexerClient
+        .searchForTransactions()
+        .notePrefix(encodedNote)
+        .txType("appl")
+        .minRound(minRound)
+        .limit(10) // Limit to 10 most recent transactions
+        .do();
+      
+      console.log(`Found ${response.transactions.length} property transactions`);
+      
+      // Process transactions to get property details
+      for (const transaction of response.transactions) {
+        if (transaction["application-index"]) {
+          const appId = transaction["application-index"];
+          try {
+            // Check if we already have this property
+            if (!properties.some(p => p.appId === appId)) {
+              console.log(`Fetching details for property ${appId}...`);
+              const property = await getApplication(appId);
+              if (property) {
+                properties.push(property);
+                console.log(`Added property: ${property.title}`);
+              }
+            }
+          } catch (error) {
+            console.warn(`Error fetching property ${appId}:`, error);
+            // Continue with other properties
+          }
+        }
       }
+    } catch (error) {
+      console.error("Error in transaction search:", error);
+      // If the search fails, we'll still try to continue with any known app IDs
     }
+    
+    console.log(`Total properties found: ${properties.length}`);
+    return properties;
+  } catch (error) {
+    console.error("Error in getPropertiesAction:", error);
+    throw new Error(`Failed to fetch properties: ${error.message || "Unknown error"}`);
   }
-  console.log("Properties fetched.");
-  return properties;
 };
 
-const getApplication = async (appId) => {
+export const getApplication = async (appId) => {
   try {
     // 1. Get application by appId
     let response = await indexerClient
@@ -354,6 +436,7 @@ const getApplication = async (appId) => {
       owner
     );
   } catch (err) {
+    console.error("Error in getApplication:", err);
     return null;
   }
 };
