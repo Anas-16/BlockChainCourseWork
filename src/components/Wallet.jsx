@@ -1,5 +1,5 @@
 import React from 'react';
-import {Dropdown, Spinner, Stack} from 'react-bootstrap';
+import {Dropdown, Stack} from 'react-bootstrap';
 import {microAlgosToString, truncateAddress} from '../utils/conversions';
 import Identicon from './utils/Identicon'
 import PropTypes from "prop-types";
@@ -19,14 +19,17 @@ const Wallet = ({address, name, amount, symbol, disconnect}) => {
                             <span className="ms-1"> {symbol}</span>
                         </>
                     ) : (
-                        <Spinner animation="border" size="sm" className="opacity-25"/>
+                        <span className="ms-1">0 {symbol}</span>
                     )}
-                    <Identicon address={address} size={28} className="ms-2 me-1"/>
+                    <span className="ms-2 me-1">
+                        <Identicon address={address} size={28} className="d-none d-sm-block"/>
+                    </span>
                 </Dropdown.Toggle>
 
                 <Dropdown.Menu className="shadow-lg border-0">
-                    <Dropdown.Item href={`https://testnet.algoexplorer.io/address/${address}`}
-                                   target="_blank">
+                    <Dropdown.Item 
+                        href={`https://explorer.bitquery.io/algorand_testnet/address/${address}`}
+                        target="_blank">
                         <Stack direction="horizontal" gap={2}>
                             <i className="bi bi-person-circle fs-4"/>
                             <div className="d-flex flex-column">
