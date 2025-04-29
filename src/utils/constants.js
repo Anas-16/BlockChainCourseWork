@@ -1,5 +1,5 @@
 import algosdk from "algosdk";
-import MyAlgoConnect from "@randlabs/myalgo-connect";
+import { PeraWalletConnect } from "@perawallet/connect";
 
 const config = {
     algodToken: "",
@@ -14,7 +14,11 @@ export const algodClient = new algosdk.Algodv2(config.algodToken, config.algodSe
 
 export const indexerClient = new algosdk.Indexer(config.indexerToken, config.indexerServer, config.indexerPort);
 
-export const myAlgoConnect = new MyAlgoConnect();
+export const peraWallet = new PeraWalletConnect({
+    chainId: 416002 // TestNet chain ID
+});
+
+peraWallet.reconnectSession();
 
 export const minRound = 21540981;
 
@@ -25,7 +29,7 @@ export const propertyDappNote = "property-dapp:uv2"
 export const numLocalInts = 0;
 export const numLocalBytes = 0;
 // Maximum global storage allocation, immutable
-export const numGlobalInts = 3; // Global variables stored as Int: count, sold
-export const numGlobalBytes = 5; // Global variables stored as Bytes: name, description, image
+export const numGlobalInts = 3;
+export const numGlobalBytes = 3;
 
 export const ALGORAND_DECIMALS = 6;

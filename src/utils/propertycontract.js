@@ -85,12 +85,11 @@ export const createPropertyAction = async (senderAddress, property) => {
   // Get transaction ID
   let txId = txn.txID().toString();
 
-  // Sign & submit the transaction
-  let signedTxn = await peraWallet.signTransaction([
-    txn.toByte()
-  ]);
+  // Sign & submit the transaction using Pera Wallet instead of MyAlgo
+  const singleTxnGroups = [{ txn }];
+  const signedTxn = await peraWallet.signTransaction([singleTxnGroups]);
   console.log("Signed transaction with txID: %s", txId);
-  await algodClient.sendRawTransaction(signedTxn.blob).do();
+  await algodClient.sendRawTransaction(signedTxn).do();
 
   // Wait for transaction to be confirmed
   let confirmedTxn = await algosdk.waitForConfirmation(algodClient, txId, 4);
@@ -147,12 +146,12 @@ export const buyPropertyAction = async (senderAddress, product) => {
   for (let i = 0; i < 2; i++) txnArray[i].group = groupID;
 
   // Sign & submit the group transaction
-  let signedTxn = await peraWallet.signTransaction([
+  let signedTxn = await peraWallet.signTransaction(
     txnArray.map((txn) => txn.toByte())
-  ]);
+  );
   console.log("Signed group transaction");
   let tx = await algodClient
-    .sendRawTransaction(signedTxn.blob)
+    .sendRawTransaction(signedTxn.map((txn) => txn.blob))
     .do();
 
   // Wait for group transaction to be confirmed
@@ -195,12 +194,12 @@ export const ratePropertyAction = async (senderAddress, product, rate) => {
   for (let i = 0; i < 1; i++) txnArray[i].group = groupID;
 
   // Sign & submit the group transaction
-  let signedTxn = await peraWallet.signTransaction([
+  let signedTxn = await peraWallet.signTransaction(
     txnArray.map((txn) => txn.toByte())
-  ]);
+  );
   console.log("Signed group transaction");
   let tx = await algodClient
-    .sendRawTransaction(signedTxn.blob)
+    .sendRawTransaction(signedTxn.map((txn) => txn.blob))
     .do();
 
   // Wait for group transaction to be confirmed
@@ -232,11 +231,9 @@ export const deletePropertyAction = async (senderAddress, index) => {
   let txId = txn.txID().toString();
 
   // Sign & submit the transaction
-  let signedTxn = await peraWallet.signTransaction([
-    txn.toByte()
-  ]);
+  let signedTxn = await peraWallet.signTransaction([{ txn }]);
   console.log("Signed transaction with txID: %s", txId);
-  await algodClient.sendRawTransaction(signedTxn.blob).do();
+  await algodClient.sendRawTransaction(signedTxn).do();
 
   // Wait for transaction to be confirmed
   const confirmedTxn = await algosdk.waitForConfirmation(algodClient, txId, 4);

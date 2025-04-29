@@ -4,7 +4,7 @@ import "./App.css";
 import Wallet from "./components/Wallet";
 import { Container, Nav } from "react-bootstrap";
 import Properties from "./components/property/Properties";
-import { indexerClient, myAlgoConnect } from "./utils/constants";
+import { indexerClient, peraWallet } from "./utils/constants";
 import { Notification } from "./components/utils/Notifications";
 
 const App = function AppWrapper() {
@@ -26,21 +26,24 @@ const App = function AppWrapper() {
   };
 
   const connectWallet = async () => {
-    myAlgoConnect
-      .connect()
-      .then((accounts) => {
-        const _account = accounts[0];
-        setAddress(_account.address);
-        setName(_account.name);
-        fetchBalance(_account.address);
-      })
-      .catch((error) => {
-        console.log("Could not connect to MyAlgo wallet");
-        console.error(error);
-      });
+    try {
+      const accounts = await peraWallet.connect();
+      if (accounts.length === 0) {
+        return;
+      }
+      
+      const _account = accounts[0];
+      setAddress(_account);
+      setName("Pera Wallet");
+      fetchBalance(_account);
+    } catch (error) {
+      console.log("Could not connect to Pera wallet");
+      console.error(error);
+    }
   };
 
   const disconnect = () => {
+    peraWallet.disconnect();
     setAddress(null);
     setName(null);
     setBalance(null);
