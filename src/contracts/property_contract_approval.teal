@@ -1,0 +1,75 @@
+#pragma version 6
+txn ApplicationID
+int 0
+==
+bnz main_l8
+txn OnCompletion
+int DeleteApplication
+==
+bnz main_l7
+txna ApplicationArgs 0
+byte "buy"
+==
+bnz main_l6
+txna ApplicationArgs 0
+byte "rate"
+==
+bnz main_l5
+err
+main_l5:
+byte "RATE"
+txna ApplicationArgs 1
+btoi
+app_global_put
+int 1
+return
+main_l6:
+byte "BOUGHT"
+int 1
+app_global_put
+byte "BUYER"
+txna ApplicationArgs 1
+app_global_put
+int 1
+return
+main_l7:
+txn Sender
+global CreatorAddress
+==
+return
+main_l8:
+txn NumAppArgs
+int 5
+==
+assert
+txn Note
+byte "property-dapp:uv2"
+==
+assert
+byte "TITLE"
+txna ApplicationArgs 0
+app_global_put
+byte "IMAGE"
+txna ApplicationArgs 1
+app_global_put
+byte "LOCATION"
+txna ApplicationArgs 2
+app_global_put
+byte "BOUGHT"
+int 0
+app_global_put
+byte "RATE"
+int 0
+app_global_put
+byte "OWNER"
+txna ApplicationArgs 3
+app_global_put
+byte "BUYER"
+txna ApplicationArgs 3
+app_global_put
+byte "PRICE"
+txna ApplicationArgs 4
+btoi
+app_global_put
+int 1
+return
