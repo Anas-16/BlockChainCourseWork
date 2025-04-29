@@ -4,7 +4,7 @@
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
+[![Issues][issues-shield]][issues-url] 
 [![MIT License][license-shield]][license-url]
 
 
@@ -61,9 +61,9 @@
 ![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/cloudy.png)
 
 ## :computer: Development: Connect to testnet wallet
-- Create account on testnet using [MyAlgo Wallet](https://wallet.myalgo.com/)
+- Create account on testnet using [Pera Wallet](https://perawallet.app/)
 - Add funds using [faucet](https://bank.testnet.algorand.network/)
-- Start app, click "Connect Wallet" and use MyAlgo Wallet UI to connect testnet wallet
+- Start app, click "Connect Wallet" and use Pera Wallet to connect testnet wallet
 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
