@@ -163,59 +163,88 @@ export const createPropertyAction = async (senderAddress, property) => {
   }
 };
 
-// BUY PRODUCT: Group transaction consisting of ApplicationCallTxn and PaymentTxn
-export const buyPropertyAction = async (senderAddress, product) => {
+// BUY PROPERTY: ApplicationCallTxn
+export const buyPropertyAction = async (senderAddress, property) => {
   console.log("Buying property...");
-
-  let params = await algodClient.getTransactionParams().do();
-
-  // Build required app args as Uint8Array
-  let buyArg = new TextEncoder().encode("buy");
-  let buyer = new TextEncoder().encode(senderAddress);
-  let appArgs = [buyArg, buyer];
-
-  // Create ApplicationCallTxn
-  let appCallTxn = algosdk.makeApplicationCallTxnFromObject({
-    from: senderAddress,
-    appIndex: product.appId,
-    onComplete: algosdk.OnApplicationComplete.NoOpOC,
-    suggestedParams: params,
-    appArgs: appArgs,
-  });
-
-  // Create PaymentTxn
-  let paymentTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
-    from: senderAddress,
-    to: product.owner,
-    amount: product.price,
-    suggestedParams: params,
-  });
-
-  let txnArray = [appCallTxn, paymentTxn];
-
-  // Create group transaction out of previously build transactions
-  let groupID = algosdk.computeGroupID(txnArray);
-  for (let i = 0; i < 2; i++) txnArray[i].group = groupID;
-
-  // Sign & submit the group transaction
-  let signedTxn = await peraWallet.signTransaction(
-    txnArray.map((txn) => txn.toByte())
-  );
-  console.log("Signed group transaction");
-  let tx = await algodClient
-    .sendRawTransaction(signedTxn.map((txn) => txn.blob))
-    .do();
-
-  // Wait for group transaction to be confirmed
-  let confirmedTxn = await algosdk.waitForConfirmation(algodClient, tx.txId, 4);
-
-  // Notify about completion
-  console.log(
-    "Group transaction " +
-      tx.txId +
-      " confirmed in round " +
-      confirmedTxn["confirmed-round"]
-  );
+  console.log("Sender address:", senderAddress);
+  console.log("Property:", property);
+  
+  try {
+    // Get transaction params
+    const params = await algodClient.getTransactionParams().do();
+    console.log("Transaction params:", params);
+    
+    // Create application call transaction to buy property
+    const appId = property.appId;
+    console.log(`Creating application call for appId: ${appId}`);
+    
+    // Convert price to microAlgos
+    const price = property.price;
+    console.log(`Property price: ${price} microAlgos`);
+    
+    // Create application call transaction
+    const appCallTxn = algosdk.makeApplicationNoOpTxn(
+      senderAddress,
+      params,
+      appId,
+      [new TextEncoder().encode("buy")],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined
+    );
+    
+    // Create payment transaction
+    const paymentTxn = algosdk.makePaymentTxnWithSuggestedParams(
+      senderAddress,
+      property.owner,
+      price,
+      undefined,
+      undefined,
+      params
+    );
+    
+    // Group transactions
+    const txnGroup = [appCallTxn, paymentTxn];
+    algosdk.assignGroupID(txnGroup);
+    
+    console.log("Transaction group created");
+    
+    // Sign transactions with Pera wallet
+    console.log("Signing transactions with Pera wallet...");
+    const txnsToSign = txnGroup.map(txn => {
+      return {
+        txn: txn,
+        signers: [senderAddress],
+      };
+    });
+    
+    try {
+      const signedTxns = await peraWallet.signTransaction([txnsToSign]);
+      console.log("Transactions signed successfully");
+      
+      // Submit transactions
+      console.log("Submitting transactions...");
+      const { txId } = await algodClient.sendRawTransaction(signedTxns).do();
+      console.log(`Transactions submitted with ID: ${txId}`);
+      
+      // Wait for confirmation
+      console.log("Waiting for confirmation...");
+      const confirmedTxn = await algosdk.waitForConfirmation(algodClient, txId, 10);
+      console.log(`Transaction confirmed in round: ${confirmedTxn['confirmed-round']}`);
+      
+      return txId;
+    } catch (error) {
+      console.error("Error signing or submitting transactions:", error);
+      throw new Error(`Failed to sign or submit transactions: ${error.message || "Unknown error"}`);
+    }
+  } catch (error) {
+    console.error("Error in buyPropertyAction:", error);
+    throw new Error(`Failed to buy property: ${error.message || "Unknown error"}`);
+  }
 };
 
 // RATE PRODUCT: Group transaction consisting of ApplicationCallTxn and PaymentTxn
@@ -314,46 +343,81 @@ export const getPropertiesAction = async () => {
     // Get applications created with property note
     let note = new TextEncoder().encode(propertyDappNote);
     let encodedNote = Buffer.from(note).toString("base64");
-
-    // Use a more targeted approach with limits to avoid timeouts
     let properties = [];
     
+    // First approach: Try to get properties directly by appId if we know them
+    // This is a fallback mechanism when the indexer search fails
     try {
-      console.log("Searching for property transactions with limits...");
-      // Add a limit parameter to avoid timeout
+      // Try to get known app IDs from localStorage
+      const savedAppIds = JSON.parse(localStorage.getItem('propertyAppIds') || '[]');
+      console.log(`Found ${savedAppIds.length} saved property IDs in local storage`);
+      
+      // Fetch each property by its app ID
+      for (const appId of savedAppIds) {
+        try {
+          console.log(`Fetching property ${appId} directly...`);
+          const property = await getApplication(appId);
+          if (property) {
+            properties.push(property);
+            console.log(`Added property from storage: ${property.title}`);
+          }
+        } catch (error) {
+          console.warn(`Error fetching property ${appId}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error("Error retrieving properties from localStorage:", error);
+    }
+    
+    // Second approach: Try the indexer with smaller limit to avoid timeout
+    try {
+      console.log("Searching for property transactions with smaller limit...");
       const response = await indexerClient
         .searchForTransactions()
         .notePrefix(encodedNote)
         .txType("appl")
         .minRound(minRound)
-        .limit(10) // Limit to 10 most recent transactions
+        .limit(10) // Reduced limit to avoid timeout
         .do();
       
       console.log(`Found ${response.transactions.length} property transactions`);
       
       // Process transactions to get property details
+      const appIds = [];
       for (const transaction of response.transactions) {
         if (transaction["application-index"]) {
           const appId = transaction["application-index"];
-          try {
-            // Check if we already have this property
-            if (!properties.some(p => p.appId === appId)) {
+          appIds.push(appId);
+          
+          // Only fetch if we don't already have this property
+          if (!properties.some(p => p.appId === appId)) {
+            try {
               console.log(`Fetching details for property ${appId}...`);
               const property = await getApplication(appId);
               if (property) {
                 properties.push(property);
                 console.log(`Added property: ${property.title}`);
               }
+            } catch (error) {
+              console.warn(`Error fetching property ${appId}:`, error);
             }
-          } catch (error) {
-            console.warn(`Error fetching property ${appId}:`, error);
-            // Continue with other properties
           }
         }
       }
+      
+      // Save the app IDs to localStorage for future use
+      try {
+        // Merge with existing IDs and remove duplicates
+        const existingIds = JSON.parse(localStorage.getItem('propertyAppIds') || '[]');
+        const allIds = [...new Set([...existingIds, ...appIds])];
+        localStorage.setItem('propertyAppIds', JSON.stringify(allIds));
+        console.log(`Saved ${allIds.length} property IDs to localStorage`);
+      } catch (error) {
+        console.error("Error saving property IDs to localStorage:", error);
+      }
     } catch (error) {
       console.error("Error in transaction search:", error);
-      // If the search fails, we'll still try to continue with any known app IDs
+      // We'll still return any properties we found from localStorage
     }
     
     console.log(`Total properties found: ${properties.length}`);
@@ -366,15 +430,20 @@ export const getPropertiesAction = async () => {
 
 export const getApplication = async (appId) => {
   try {
+    console.log(`Getting application details for appId: ${appId}`);
     // 1. Get application by appId
     let response = await indexerClient
       .lookupApplications(appId)
       .includeAll(true)
       .do();
-    if (response.application.deleted) {
+      
+    if (!response.application || response.application.deleted) {
+      console.log(`Application ${appId} not found or deleted`);
       return null;
     }
+    
     let globalState = response.application.params["global-state"];
+    console.log(`Retrieved global state for application ${appId}`);
 
     // 2. Parse fields of response and return product
     let owner = response.application.params.creator;
@@ -424,6 +493,7 @@ export const getApplication = async (appId) => {
       buyer = base64ToUTF8String(field);
     }
 
+    console.log(`Successfully parsed property: ${title}`);
     return new Property(
       title,
       image,
@@ -436,7 +506,28 @@ export const getApplication = async (appId) => {
       owner
     );
   } catch (err) {
-    console.error("Error in getApplication:", err);
+    console.error(`Error in getApplication for appId ${appId}:`, err);
     return null;
   }
+};
+
+// Add a new function to get properties by direct app ID lookup
+export const getPropertiesByAppIds = async (appIds) => {
+  console.log(`Fetching ${appIds.length} properties by app IDs...`);
+  const properties = [];
+  
+  for (const appId of appIds) {
+    try {
+      const property = await getApplication(appId);
+      if (property) {
+        properties.push(property);
+        console.log(`Retrieved property ${property.title} (${appId})`);
+      }
+    } catch (error) {
+      console.error(`Error fetching property ${appId}:`, error);
+    }
+  }
+  
+  console.log(`Retrieved ${properties.length} properties by direct lookup`);
+  return properties;
 };

@@ -21,17 +21,22 @@ const Properties = ({ address, fetchBalance }) => {
   const getProperties = useCallback(async () => {
     try {
       setLoading(true);
+      console.log("Fetching properties...");
+      
       try {
         const properties = await getPropertiesAction();
+        console.log("Properties fetched:", properties);
+        
         if (properties && properties.length > 0) {
           setProperties(properties);
+          console.log(`Successfully loaded ${properties.length} properties`);
         } else {
           console.log("No properties found from indexer, keeping existing properties");
+          toast.info("No properties found. Create one to get started!");
         }
       } catch (error) {
         console.error("Error fetching properties from indexer:", error);
-        // Don't clear existing properties if the indexer fails
-        toast.error(`Indexer error: ${error.message || error}`);
+        toast.error(`Error loading properties: ${error.message || error}`);
       } finally {
         setLoading(false);
       }
@@ -55,6 +60,18 @@ const Properties = ({ address, fetchBalance }) => {
       // Create the property
       const appId = await createPropertyAction(address, data);
       console.log("Property created with appId:", appId);
+      
+      // Save the appId to localStorage
+      try {
+        const savedAppIds = JSON.parse(localStorage.getItem('propertyAppIds') || '[]');
+        if (!savedAppIds.includes(appId)) {
+          savedAppIds.push(appId);
+          localStorage.setItem('propertyAppIds', JSON.stringify(savedAppIds));
+          console.log(`Saved appId ${appId} to localStorage`);
+        }
+      } catch (error) {
+        console.error("Error saving appId to localStorage:", error);
+      }
       
       // Show success notification
       toast.success("Property created successfully!");

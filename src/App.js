@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Cover from "./components/Cover";
 import "./App.css";
 import Wallet from "./components/Wallet";
@@ -48,6 +48,14 @@ const App = function AppWrapper() {
     setName(null);
     setBalance(null);
   };
+
+  useEffect(() => {
+    // Initialize localStorage if needed
+    if (!localStorage.getItem('propertyAppIds')) {
+      localStorage.setItem('propertyAppIds', JSON.stringify([]));
+      console.log("Initialized property app IDs in localStorage");
+    }
+  }, []);
 
   return (
     <>
