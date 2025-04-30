@@ -182,12 +182,16 @@ export const buyPropertyAction = async (senderAddress, property) => {
     const price = property.price;
     console.log(`Property price: ${price} microAlgos`);
     
+    // Create application args
+    const buyArg = new TextEncoder().encode("buy");
+    const buyerArg = new TextEncoder().encode(senderAddress);
+    
     // Create application call transaction
     const appCallTxn = algosdk.makeApplicationNoOpTxn(
       senderAddress,
       params,
       appId,
-      [new TextEncoder().encode("buy")],
+      [buyArg, buyerArg], // Include the buyer address as an argument
       undefined,
       undefined,
       undefined,
@@ -215,6 +219,7 @@ export const buyPropertyAction = async (senderAddress, property) => {
     
     // Sign transactions with Pera wallet
     console.log("Signing transactions with Pera wallet...");
+    
     const txnsToSign = txnGroup.map(txn => {
       return {
         txn: txn,
@@ -247,52 +252,87 @@ export const buyPropertyAction = async (senderAddress, property) => {
   }
 };
 
-// RATE PRODUCT: Group transaction consisting of ApplicationCallTxn and PaymentTxn
-export const ratePropertyAction = async (senderAddress, product, rate) => {
-  console.log("Rate property...");
+// RATE PROPERTY: ApplicationCallTxn
+export const ratePropertyAction = async (senderAddress, property, rate) => {
+  console.log("Rating property...");
+  console.log("Sender address:", senderAddress);
+  console.log("Property:", property);
+  console.log("Rating:", rate);
 
-  let params = await algodClient.getTransactionParams().do();
-
-  // Build required app args as Uint8Array
-  let rateArg = new TextEncoder().encode("rate");
-  let ratesArg = algosdk.encodeUint64(rate);
-
-  let appArgs = [rateArg, ratesArg];
-
-  // Create ApplicationCallTxn
-  let appCallTxn = algosdk.makeApplicationCallTxnFromObject({
-    from: senderAddress,
-    appIndex: product.appId,
-    onComplete: algosdk.OnApplicationComplete.NoOpOC,
-    suggestedParams: params,
-    appArgs: appArgs,
-  });
-
-  let txnArray = [appCallTxn];
-
-  // Create group transaction out of previously build transactions
-  let groupID = algosdk.computeGroupID(txnArray);
-  for (let i = 0; i < 1; i++) txnArray[i].group = groupID;
-
-  // Sign & submit the group transaction
-  let signedTxn = await peraWallet.signTransaction(
-    txnArray.map((txn) => txn.toByte())
-  );
-  console.log("Signed group transaction");
-  let tx = await algodClient
-    .sendRawTransaction(signedTxn.map((txn) => txn.blob))
-    .do();
-
-  // Wait for group transaction to be confirmed
-  let confirmedTxn = await algosdk.waitForConfirmation(algodClient, tx.txId, 4);
-
-  // Notify about completion
-  console.log(
-    "Group transaction " +
-      tx.txId +
-      " confirmed in round " +
-      confirmedTxn["confirmed-round"]
-  );
+  try {
+    // Get transaction params
+    const params = await algodClient.getTransactionParams().do();
+    console.log("Transaction params:", params);
+    
+    // Build required app args as Uint8Array
+    let rateArg = new TextEncoder().encode("rate");
+    
+    // Handle rate encoding with a fallback method
+    let ratesArg;
+    try {
+      // Try the standard method first
+      ratesArg = algosdk.encodeUint64(rate);
+    } catch (error) {
+      console.log("Standard uint64 encoding failed for rating, using alternative method");
+      // Alternative method without BigInt
+      const buffer = new ArrayBuffer(8);
+      const view = new DataView(buffer);
+      
+      // Ensure rate is a number and within safe range
+      const rateNumber = Number(rate);
+      if (isNaN(rateNumber) || rateNumber < 0) {
+        throw new Error("Rating must be a positive number");
+      }
+      
+      // Manual encoding of 64-bit integer (big-endian)
+      const high = Math.floor(rateNumber / 4294967296); // 2^32
+      const low = rateNumber % 4294967296;
+      
+      view.setUint32(0, high, false); // high 32 bits
+      view.setUint32(4, low, false);  // low 32 bits
+      ratesArg = new Uint8Array(buffer);
+    }
+    
+    let appArgs = [rateArg, ratesArg];
+    
+    // Create ApplicationCallTxn
+    let appCallTxn = algosdk.makeApplicationNoOpTxn(
+      senderAddress,
+      params,
+      property.appId,
+      appArgs
+    );
+    
+    // Sign transaction with Pera wallet
+    console.log("Signing transaction with Pera wallet...");
+    const txnsToSign = [{
+      txn: appCallTxn,
+      signers: [senderAddress],
+    }];
+    
+    try {
+      const signedTxns = await peraWallet.signTransaction([txnsToSign]);
+      console.log("Transaction signed successfully");
+      
+      // Submit transaction
+      console.log("Submitting transaction...");
+      const { txId } = await algodClient.sendRawTransaction(signedTxns).do();
+      console.log(`Transaction submitted with ID: ${txId}`);
+      
+      // Wait for confirmation
+      console.log("Waiting for confirmation...");
+      const confirmedTxn = await algosdk.waitForConfirmation(algodClient, txId, 10);
+      console.log(`Transaction confirmed in round: ${confirmedTxn['confirmed-round']}`);
+      
+      return txId;
+    } catch (error) {
+      console.error("Error signing or submitting transaction:", error);
+      throw new Error(`Failed to sign or submit transaction: ${error.message || "Unknown error"}`);
+    }
+  } catch (error) {
+    console.error("Error in ratePropertyAction:", error);
+    throw new Error(`Failed to rate property: ${error.message || "Unknown error"}`);
+  }
 };
 
 // DELETE PRODUCT: ApplicationDeleteTxn
@@ -338,21 +378,15 @@ export const deletePropertyAction = async (senderAddress, index) => {
 // GET PROPERTIES: Use indexer
 export const getPropertiesAction = async () => {
   console.log("Fetching properties...");
+  const properties = [];
   
+  // First try to load properties from localStorage
   try {
-    // Get applications created with property note
-    let note = new TextEncoder().encode(propertyDappNote);
-    let encodedNote = Buffer.from(note).toString("base64");
-    let properties = [];
+    const savedAppIds = JSON.parse(localStorage.getItem('propertyAppIds') || '[]');
+    console.log(`Found ${savedAppIds.length} saved property IDs in local storage`);
     
-    // First approach: Try to get properties directly by appId if we know them
-    // This is a fallback mechanism when the indexer search fails
-    try {
-      // Try to get known app IDs from localStorage
-      const savedAppIds = JSON.parse(localStorage.getItem('propertyAppIds') || '[]');
-      console.log(`Found ${savedAppIds.length} saved property IDs in local storage`);
-      
-      // Fetch each property by its app ID
+    if (savedAppIds.length > 0) {
+      // Fetch properties by their app IDs
       for (const appId of savedAppIds) {
         try {
           console.log(`Fetching property ${appId} directly...`);
@@ -362,15 +396,20 @@ export const getPropertiesAction = async () => {
             console.log(`Added property from storage: ${property.title}`);
           }
         } catch (error) {
-          console.warn(`Error fetching property ${appId}:`, error);
+          console.error(`Error fetching property ${appId}:`, error);
         }
       }
-    } catch (error) {
-      console.error("Error retrieving properties from localStorage:", error);
     }
-    
-    // Second approach: Try the indexer with smaller limit to avoid timeout
+  } catch (error) {
+    console.error("Error loading properties from localStorage:", error);
+  }
+  
+  // Only try the indexer if we don't have properties from localStorage
+  if (properties.length === 0) {
     try {
+      // Create the encoded note for searching
+      const encodedNote = new TextEncoder().encode(propertyDappNote);
+      
       console.log("Searching for property transactions with smaller limit...");
       const response = await indexerClient
         .searchForTransactions()
@@ -417,15 +456,12 @@ export const getPropertiesAction = async () => {
       }
     } catch (error) {
       console.error("Error in transaction search:", error);
-      // We'll still return any properties we found from localStorage
+      // Don't throw here, just log the error and continue with any properties we found
     }
-    
-    console.log(`Total properties found: ${properties.length}`);
-    return properties;
-  } catch (error) {
-    console.error("Error in getPropertiesAction:", error);
-    throw new Error(`Failed to fetch properties: ${error.message || "Unknown error"}`);
   }
+  
+  console.log(`Total properties found: ${properties.length}`);
+  return properties;
 };
 
 export const getApplication = async (appId) => {

@@ -14,7 +14,7 @@ import {
   getApplication,
 } from "../../utils/propertycontract";
 
-const Properties = ({ address, fetchBalance }) => {
+const Properties = ({ address, fetchBalance, reconnectWallet }) => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -115,13 +115,43 @@ const Properties = ({ address, fetchBalance }) => {
   const buyProperty = async (property) => {
     try {
       setLoading(true);
-      await buyPropertyAction(address, property);
-      await getProperties();
-      await fetchBalance(address);
-      toast.success("Property bought successfully");
-    } catch (error) {
-      console.error("Error buying property:", error);
-      toast.error(`Error buying property: ${error.message || error}`);
+      console.log("Attempting to buy property...");
+      
+      try {
+        await buyPropertyAction(address, property);
+        toast.success("Property bought successfully!");
+        await getProperties();
+        await fetchBalance(address);
+      } catch (error) {
+        console.error("Error buying property:", error);
+        
+        // If we get a wallet connection error, try to reconnect
+        if (error.message && (
+            error.message.includes("sendCustomRequest") || 
+            error.message.includes("Request Pending")
+        )) {
+          console.log("Wallet connection issue detected, attempting to reconnect...");
+          const reconnected = await reconnectWallet();
+          
+          if (reconnected) {
+            console.log("Wallet reconnected, retrying purchase...");
+            try {
+              await buyPropertyAction(address, property);
+              toast.success("Property bought successfully!");
+              await getProperties();
+              await fetchBalance(address);
+              return;
+            } catch (retryError) {
+              console.error("Error on retry:", retryError);
+              toast.error(`Failed to buy property: ${retryError.message || "Unknown error"}`);
+            }
+          } else {
+            toast.error("Could not reconnect wallet. Please refresh the page and try again.");
+          }
+        } else {
+          toast.error(`Error buying property: ${error.message || "Unknown error"}`);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -188,6 +218,7 @@ const Properties = ({ address, fetchBalance }) => {
 Properties.propTypes = {
   address: PropTypes.string.isRequired,
   fetchBalance: PropTypes.func.isRequired,
+  reconnectWallet: PropTypes.func.isRequired,
 };
 
 export default Properties;

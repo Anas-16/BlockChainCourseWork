@@ -5,9 +5,9 @@ import {
   Button,
   Card,
   Col,
-  Form,
   Stack,
   FloatingLabel,
+  Form,
 } from "react-bootstrap";
 import { microAlgosToString, truncateAddress } from "../../utils/conversions";
 import Identicon from "../utils/Identicon";
@@ -104,6 +104,25 @@ const Property = ({
               </>
             )}
           </Form>
+          <div className="d-flex align-items-center mt-2">
+            <span className="me-2">Current Rating: {property.rate}</span>
+            {address === property.buyer && (
+              <div>
+                <p className="small text-muted mb-1">Rate this property (as buyer):</p>
+                <div className="d-flex">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      className="btn btn-sm btn-outline-warning me-1"
+                      onClick={() => rateProperty(property, star)}
+                    >
+                      {star} ★
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </Card.Body>
       </Card>
     </Col>

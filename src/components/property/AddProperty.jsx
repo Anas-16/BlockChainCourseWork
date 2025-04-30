@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal, Form, FloatingLabel } from "react-bootstrap";
-import { createPropertyAction } from "../../utils/propertycontract";
 import { toast } from "react-toastify";
 
 const AddProperty = ({ createProperty }) => {
